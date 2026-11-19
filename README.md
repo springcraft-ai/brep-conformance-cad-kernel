@@ -24,8 +24,31 @@ maintains it.
 
 ## Overview
 
-The adapter is a single Rust program that answers each function of the suite's protocol with
-cad-kernel's one call for it, and lists the rest as unsupported.
+[`src/main.rs`](src/main.rs) answers each function with cad-kernel's one call for it, as
+[the contract](https://github.com/springcraft-ai/brep-conformance/blob/main/doc/contract.md#what-an-adapter-may-do)
+asks, and lists the rest as unsupported. It builds the suite's box, cylinder, sphere, torus and cone
+with cad-kernel's own constructors, and its extrusions, revolutions and screws with its prism,
+revolution and screw of a profile, each about the origin and moved onto its frame. It answers the
+booleans, the booleans of many (cad-kernel's Boolean of any number of solids at once), volume and
+area, the validity check, classification, rigid and affine maps, fillets, offsets, shells, meshes
+and STEP with cad-kernel's own, naming edges and faces by cad-kernel's reading of the point onto
+them.
+
+cad-kernel's tolerance is relative, a part in 10⁹ of a solid's size, and the adapter passes that to
+each call that takes one. Its mesher's angular deflection is set to 0.2 rad, the value cad-kernel's
+own queries use, and `hello` says so.
+
+cad-kernel says a result is empty by a B-rep with no faces, and the adapter reads that, and nothing
+else, as the empty solid.
+
+Listed as unsupported, since cad-kernel 0.17 has no one call of the protocol's shape for it: lofts
+(its loft takes B-spline nets, not profiles), sweeps, slabs, chamfers (its flat along an edge is
+the piece a chamfer cuts away, not the solid chamfered), blends of unequal, varying or other-shaped
+section, face offsets, deletes, moves, thickens and drafts, STEP reading and sewing, the nearest
+point, normals, curvatures, mass properties beyond volume, distance, interference, Betti numbers,
+sections, projections, splits, displays, ray casts, and the least bounding box (cad-kernel's box is
+never smaller than the solid, but not the least). Profile splines are refused until the adapter
+gives them as cad-kernel's B-splines.
 
 ## Setup
 
