@@ -11,7 +11,7 @@ use cad_kernel::build::{
     Profile, ProfileEdge, block, cone, prism, revolve, screwed, sphere, torus,
 };
 use cad_kernel::geom::{Frame, Rigid, V, tolerance};
-use cad_kernel::offset::{Join, Side, grown, shelled, shrunk};
+use cad_kernel::offset::{Join, Side, grown, normal_sweep, shelled, shrunk};
 use cad_kernel::props;
 use cad_kernel::query::{Located, Place};
 use cad_kernel::rounds::rounded;
@@ -233,20 +233,23 @@ fn faces_at(b: &Brep, points: &[model::Vec3]) -> Result<Vec<usize>, Refusal> {
     let located = Located::new(b, tol(b));
     points
         .iter()
-        .map(|&p| {
-            let on: Vec<usize> = (0..b.faces.len())
-                .filter(|&fi| {
-                    let foot = b.faces[fi].surface.point(located.uv(fi, p));
-                    distance(foot, p) <= ADDRESS && located.face_place(fi, p) != Place::Out
-                })
-                .collect();
-            match on[..] {
-                [] => Err(Refusal::invalid(format!("no face passes through {p:?}"))),
-                [fi] => Ok(fi),
-                _ => Err(Refusal::unsupported(
-                    "a point on an edge or a vertex, where several faces meet",
-                )),
-            }
+        .map(|&p| match faces_through(b, &located, p)[..] {
+            [] => Err(Refusal::invalid(format!("no face passes through {p:?}"))),
+            [fi] => Ok(fi),
+            _ => Err(Refusal::unsupported(
+                "a point on an edge or a vertex, where several faces meet",
+            )),
+        })
+        .collect()
+}
+
+/// The faces of `b` whose surface passes within `10·ε` of `p`, by the foot cad-kernel reads the
+/// point onto, and that hold it.
+fn faces_through(b: &Brep, located: &Located, p: model::Vec3) -> Vec<usize> {
+    (0..b.faces.len())
+        .filter(|&fi| {
+            let foot = b.faces[fi].surface.point(located.uv(fi, p));
+            distance(foot, p) <= ADDRESS && located.face_place(fi, p) != Place::Out
         })
         .collect()
 }
@@ -399,6 +402,43 @@ impl brep_protocol::Kernel for CadKernel {
         shelled(s, &found, t, Side::In, Join::Round).map_err(Refusal::failed)
     }
 
+    /// cad-kernel sweeps one face along its normal per call: a face swept from 0 to `t`, or from
+    /// `t` to 0 where it is negative.
+    fn thicken(&self, s: &Brep, faces: &[model::Vec3], t: f64) -> Result<Brep, Refusal> {
+        if is_empty(s) {
+            return Err(Refusal::invalid("nothing to thicken"));
+        }
+        let [fi] = faces_at(s, faces)?[..] else {
+            return Err(Refusal::unsupported(
+                "cad-kernel sweeps one face along its normal per call, not several at once",
+            ));
+        };
+        let span = if t < 0.0 { [t, 0.0] } else { [0.0, t] };
+        normal_sweep(s, fi, span).map_err(Refusal::failed)
+    }
+
+    /// cad-kernel's outward normal of the one face a point lies on.
+    fn normal(
+        &self,
+        s: &Brep,
+        points: &[model::Vec3],
+    ) -> Result<Vec<Option<model::Vec3>>, Refusal> {
+        if is_empty(s) {
+            return Ok(vec![None; points.len()]);
+        }
+        let located = Located::new(s, tol(s));
+        points
+            .iter()
+            .map(|&p| match faces_through(s, &located, p)[..] {
+                [] => Ok(None),
+                [fi] => Ok(s.faces[fi].outward(p)),
+                _ => Err(Refusal::unsupported(
+                    "a point on an edge or a vertex, where several faces meet",
+                )),
+            })
+            .collect()
+    }
+
     fn mesh(&self, s: &Brep, tolerance: f64) -> Result<brep_protocol::Mesh, Refusal> {
         if is_empty(s) {
             return Ok(brep_protocol::Mesh::default());
@@ -441,12 +481,10 @@ impl brep_protocol::Kernel for CadKernel {
             "offset_faces",
             "delete_faces",
             "move_faces",
-            "thicken",
             "draft",
             "sew",
             "read_step",
             "closest",
-            "normal",
             "curvature",
             "centroid",
             "inertia",
