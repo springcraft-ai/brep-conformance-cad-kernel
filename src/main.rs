@@ -121,6 +121,9 @@ fn sketch(p: &profile::Profile, plane: Plane) -> Result<Profile, Refusal> {
             profile::Seg::Gn { .. } => Err(Refusal::unsupported(
                 "cad-kernel profiles have no blend-section segment",
             )),
+            _ => Err(Refusal::unsupported(
+                "the adapter does not know this kind of profile segment",
+            )),
         }
     };
     let loops = p
@@ -282,24 +285,24 @@ impl brep_protocol::Kernel for CadKernel {
         format!("mesh angular deflection {ANGULAR} rad")
     }
 
-    fn make(&self, p: &Primitive) -> Result<Brep, Refusal> {
+    fn make(&mut self, p: &Primitive) -> Result<Brep, Refusal> {
         make(p)
     }
 
-    fn union(&self, a: &Brep, b: &Brep) -> Result<Brep, Refusal> {
+    fn union(&mut self, a: &Brep, b: &Brep) -> Result<Brep, Refusal> {
         boolean(Op::Union, a, b)
     }
 
-    fn intersection(&self, a: &Brep, b: &Brep) -> Result<Brep, Refusal> {
+    fn intersection(&mut self, a: &Brep, b: &Brep) -> Result<Brep, Refusal> {
         boolean(Op::Common, a, b)
     }
 
-    fn difference(&self, a: &Brep, b: &Brep) -> Result<Brep, Refusal> {
+    fn difference(&mut self, a: &Brep, b: &Brep) -> Result<Brep, Refusal> {
         boolean(Op::Cut, a, b)
     }
 
     /// cad-kernel's Boolean of many solids at once, each cell kept where any operand holds it.
-    fn union_all(&self, solids: &[&Brep]) -> Result<Brep, Refusal> {
+    fn union_all(&mut self, solids: &[&Brep]) -> Result<Brep, Refusal> {
         let solids: Vec<&Brep> = solids.iter().copied().filter(|s| !is_empty(s)).collect();
         match solids[..] {
             [] => Ok(empty()),
@@ -314,7 +317,7 @@ impl brep_protocol::Kernel for CadKernel {
 
     /// cad-kernel's Boolean of many solids at once, each cell kept where the target holds it and
     /// no tool does.
-    fn difference_all(&self, target: &Brep, tools: &[&Brep]) -> Result<Brep, Refusal> {
+    fn difference_all(&mut self, target: &Brep, tools: &[&Brep]) -> Result<Brep, Refusal> {
         if is_empty(target) {
             return Ok(empty());
         }
@@ -328,16 +331,16 @@ impl brep_protocol::Kernel for CadKernel {
         Ok(selected(&operands, &keep, t).map_err(Refusal::failed)?.brep)
     }
 
-    fn volume(&self, s: &Brep) -> Result<f64, Refusal> {
+    fn volume(&mut self, s: &Brep) -> Result<f64, Refusal> {
         Ok(props::volume(s))
     }
 
     /// The boundary's area: cad-kernel measures it face by face.
-    fn area(&self, s: &Brep) -> Result<f64, Refusal> {
+    fn area(&mut self, s: &Brep) -> Result<f64, Refusal> {
         Ok(s.faces.iter().map(|f| props::area(s, f)).sum())
     }
 
-    fn check(&self, s: &Brep) -> Result<Vec<String>, Refusal> {
+    fn check(&mut self, s: &Brep) -> Result<Vec<String>, Refusal> {
         if is_empty(s) {
             return Ok(Vec::new());
         }
@@ -347,7 +350,7 @@ impl brep_protocol::Kernel for CadKernel {
         })
     }
 
-    fn classify(&self, s: &Brep, points: &[model::Vec3]) -> Result<Vec<model::Side>, Refusal> {
+    fn classify(&mut self, s: &Brep, points: &[model::Vec3]) -> Result<Vec<model::Side>, Refusal> {
         if is_empty(s) {
             return Ok(vec![model::Side::Out; points.len()]);
         }
@@ -362,15 +365,15 @@ impl brep_protocol::Kernel for CadKernel {
             .collect())
     }
 
-    fn transform(&self, s: &Brep, matrix: [[f64; 4]; 3]) -> Result<Brep, Refusal> {
+    fn transform(&mut self, s: &Brep, matrix: [[f64; 4]; 3]) -> Result<Brep, Refusal> {
         mapped(s, matrix)
     }
 
-    fn affine(&self, s: &Brep, matrix: [[f64; 4]; 3]) -> Result<Brep, Refusal> {
+    fn affine(&mut self, s: &Brep, matrix: [[f64; 4]; 3]) -> Result<Brep, Refusal> {
         mapped(s, matrix)
     }
 
-    fn fillet(&self, s: &Brep, edges: &[model::Vec3], radius: f64) -> Result<Brep, Refusal> {
+    fn fillet(&mut self, s: &Brep, edges: &[model::Vec3], radius: f64) -> Result<Brep, Refusal> {
         if is_empty(s) {
             return Err(Refusal::invalid("nothing to fillet"));
         }
@@ -380,7 +383,7 @@ impl brep_protocol::Kernel for CadKernel {
 
     /// Every point within `d` of the solid: cad-kernel's growth with round joins, or its
     /// shrinking where `d` is negative.
-    fn offset(&self, s: &Brep, d: f64) -> Result<Brep, Refusal> {
+    fn offset(&mut self, s: &Brep, d: f64) -> Result<Brep, Refusal> {
         if is_empty(s) {
             return Ok(empty());
         }
@@ -394,7 +397,7 @@ impl brep_protocol::Kernel for CadKernel {
 
     /// The wall every point of the solid within `t` of its other faces: cad-kernel's hollowing
     /// inward, with round joins.
-    fn shell(&self, s: &Brep, open: &[model::Vec3], t: f64) -> Result<Brep, Refusal> {
+    fn shell(&mut self, s: &Brep, open: &[model::Vec3], t: f64) -> Result<Brep, Refusal> {
         if is_empty(s) {
             return Err(Refusal::invalid("nothing to shell"));
         }
@@ -404,7 +407,7 @@ impl brep_protocol::Kernel for CadKernel {
 
     /// cad-kernel sweeps one face along its normal per call: a face swept from 0 to `t`, or from
     /// `t` to 0 where it is negative.
-    fn thicken(&self, s: &Brep, faces: &[model::Vec3], t: f64) -> Result<Brep, Refusal> {
+    fn thicken(&mut self, s: &Brep, faces: &[model::Vec3], t: f64) -> Result<Brep, Refusal> {
         if is_empty(s) {
             return Err(Refusal::invalid("nothing to thicken"));
         }
@@ -419,7 +422,7 @@ impl brep_protocol::Kernel for CadKernel {
 
     /// cad-kernel's outward normal of the one face a point lies on.
     fn normal(
-        &self,
+        &mut self,
         s: &Brep,
         points: &[model::Vec3],
     ) -> Result<Vec<Option<model::Vec3>>, Refusal> {
@@ -439,67 +442,53 @@ impl brep_protocol::Kernel for CadKernel {
             .collect()
     }
 
-    fn mesh(&self, s: &Brep, tolerance: f64) -> Result<brep_protocol::Mesh, Refusal> {
+    fn mesh(&mut self, s: &Brep, tolerance: f64) -> Result<brep_protocol::Mesh, Refusal> {
         if is_empty(s) {
             return Ok(brep_protocol::Mesh::default());
         }
         let m = cad_kernel::mesh::mesh(s, tolerance, ANGULAR).map_err(Refusal::failed)?;
-        Ok(brep_protocol::Mesh {
-            positions: m.pts,
-            triangles: m.tris,
-        })
+        Ok(brep_protocol::Mesh::new(m.pts, m.tris))
     }
 
-    fn write_step(&self, s: &Brep) -> Result<String, Refusal> {
+    fn write_step(&mut self, s: &Brep) -> Result<String, Refusal> {
         if is_empty(s) {
             return Err(Refusal::invalid("an empty solid has no STEP"));
         }
         cad_kernel::step::write(s, "solid", tol(s)).map_err(Refusal::failed)
     }
 
-    fn unsupported(&self) -> Vec<String> {
+    /// What cad-kernel 0.17 has one call of the protocol's shape for. Left out with the operations
+    /// it does not have: the chamfers, since its flat along an edge is the piece a chamfer cuts
+    /// away and not the solid chamfered, and the bounding box, since its box round a solid is
+    /// never smaller than it where the protocol asks for the least one.
+    fn supports(&self) -> Vec<String> {
         [
-            // Operations cad-kernel 0.17 does not have in one call of the protocol's shape.
-            "loft",
-            "loft_through",
-            "sweep",
-            "sweep_path",
-            "slab",
-            "fillet_radii",
-            "fillet_variable",
-            "fillet_conic",
-            "fillet_g2",
-            "fillet_setback",
-            "fillet_setback_g2",
-            "fillet_faces",
-            "full_round",
-            // cad-kernel's flat along an edge is the piece a chamfer cuts away, not the solid
-            // chamfered.
-            "chamfer",
-            "chamfer_two",
-            "chamfer_distances",
-            "offset_faces",
-            "delete_faces",
-            "move_faces",
-            "draft",
-            "sew",
-            "read_step",
-            "closest",
-            "curvature",
-            "centroid",
-            "inertia",
-            "distance",
-            "interference",
-            "betti",
-            "section_area",
-            "section",
-            "project",
-            "split",
-            "display",
-            "raycast",
-            // cad-kernel's box round a solid is never smaller than it; the protocol asks for the
-            // least one.
-            "bounding_box",
+            "box",
+            "cylinder",
+            "sphere",
+            "torus",
+            "cone",
+            "extrude",
+            "revolve",
+            "screw",
+            "union",
+            "intersection",
+            "difference",
+            "union_all",
+            "difference_all",
+            "fillet",
+            "offset",
+            "thicken",
+            "shell",
+            "write_step",
+            "volume",
+            "area",
+            "classify",
+            "normal",
+            "check",
+            "mesh",
+            "transform",
+            "affine",
         ]
         .map(String::from)
         .to_vec()
@@ -507,7 +496,7 @@ impl brep_protocol::Kernel for CadKernel {
 }
 
 fn main() -> ExitCode {
-    match brep_protocol::serve(&CadKernel) {
+    match brep_protocol::serve(&mut CadKernel) {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
             eprintln!("{e}");
