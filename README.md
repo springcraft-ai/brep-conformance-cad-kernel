@@ -26,7 +26,8 @@ maintains it.
 
 [`src/main.rs`](src/main.rs) answers each function with cad-kernel's one call for it, as
 [the contract](https://github.com/springcraft-ai/brep-conformance/blob/main/doc/contract.md#what-an-adapter-may-do)
-asks, and lists the rest as unsupported. It builds the suite's box, cylinder, sphere, torus and cone
+asks, and offers only those: `supports` lists them, and the suite scores a case that needs any
+other as unsupported. It builds the suite's box, cylinder, sphere, torus and cone
 with cad-kernel's own constructors, and its extrusions, revolutions and screws with its prism,
 revolution and screw of a profile, each about the origin and moved onto its frame. It answers the
 booleans, the booleans of many (cad-kernel's Boolean of any number of solids at once), volume and
@@ -42,7 +43,7 @@ own queries use, and `hello` says so.
 cad-kernel says a result is empty by a B-rep with no faces, and the adapter reads that, and nothing
 else, as the empty solid.
 
-Listed as unsupported, since cad-kernel 0.17 has no one call of the protocol's shape for it:
+Left out of `supports`, since cad-kernel 0.17 has no one call of the protocol's shape for it:
 
 - Lofts: its loft takes the walls' B-spline nets, not the sections.
 - Sweeps: it carries a profile along one line, turn or screw; the protocol's paths join several.
