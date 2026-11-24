@@ -2,7 +2,7 @@
 name = "cad-kernel-adapter"
 version = "0.1.0"
 edition = "2024"
-license = "MIT"
+license = "MIT OR Apache-2.0"
 description = "The cad-kernel adapter for the B-rep protocol the conformance suite drives"
 publish = false
 

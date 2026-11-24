@@ -77,9 +77,11 @@ target/release/brep-conformance \
 
 ## Licences
 
-The adapter in this repository is under the MIT licence: see [LICENSE](LICENSE).
+The adapter in this repository is under either the MIT licence
+([LICENSE-MIT](LICENSE-MIT)) or the Apache License, Version 2.0
+([LICENSE-APACHE](LICENSE-APACHE)), at your option.
 
-That licence covers the adapter and nothing else. It does not cover the kernel, and nothing here
+Either licence covers the adapter and nothing else. It does not cover the kernel, and nothing here
 relicenses the kernel.
 
 cad-kernel is a separate work under its own licence. Its crate declares `MIT OR Apache-2.0`; its
