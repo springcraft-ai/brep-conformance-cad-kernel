@@ -8,4 +8,4 @@ publish = false
 
 [dependencies]
 brep-protocol = "2"
-cad-kernel = "=0.17.0"
+cad-kernel = "=0.26.0"
