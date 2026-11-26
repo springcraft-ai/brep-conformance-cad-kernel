@@ -6,6 +6,9 @@ use std::process::ExitCode;
 
 use brep_protocol::{Refusal, model, model::Primitive, profile};
 use cad_kernel::affine::Affine;
+use cad_kernel::defeature::deleted;
+use cad_kernel::step_read::{self, Why};
+use cad_kernel::{KernelError, Kind};
 use cad_kernel::boolean::{Op, combined, selected};
 use cad_kernel::build::{
     Profile, ProfileEdge, block, cone, prism, revolve, screwed, sphere, torus,
@@ -15,11 +18,15 @@ use cad_kernel::offset::{Join, Side, grown, normal_sweep, shelled, shrunk};
 use cad_kernel::props;
 use cad_kernel::query::{Located, Place};
 use cad_kernel::rounds::rounded;
+use cad_kernel::step::Fit;
 use cad_kernel::topo::Brep;
 use cad_kernel::util::space::{cross, distance, dot};
 
 /// The contract's `10·ε`, within which a point names an edge or a face.
 const ADDRESS: f64 = 1e-6;
+
+/// The bar STEP's fitted curves are held to, mm: the suite's tolerance.
+const STEP_FIT: f64 = 1e-7;
 
 /// The mesher's angular deflection, radians: the value cad-kernel's own queries mesh with.
 const ANGULAR: f64 = 0.2;
@@ -257,6 +264,16 @@ fn faces_through(b: &Brep, located: &Located, p: model::Vec3) -> Vec<usize> {
         .collect()
 }
 
+/// A refusal for one of cad-kernel's errors, by its kind: a road of another kind than the one
+/// asked for is one cad-kernel has not built, and anything else a call that did not work.
+fn refusal(e: KernelError) -> Refusal {
+    match e.kind {
+        Kind::Refused => Refusal::unsupported(e.msg),
+        Kind::Failed => Refusal::failed(e.msg),
+        _ => Refusal::failed(format!("{:?}: {}", e.kind, e.msg)),
+    }
+}
+
 /// `p ↦ M·p + t` for the rows `[M | t]`, by cad-kernel's affine map of a whole solid.
 fn mapped(s: &Brep, m: [[f64; 4]; 3]) -> Result<Brep, Refusal> {
     let a = Affine::new(m.map(|r| [r[0], r[1], r[2]]), [m[0][3], m[1][3], m[2][3]])
@@ -272,7 +289,7 @@ impl brep_protocol::Kernel for CadKernel {
     }
 
     fn version(&self) -> String {
-        "0.17.0".into()
+        "0.26.0".into()
     }
 
     /// cad-kernel's tolerance is relative, a part in 10⁹ of a solid's size; at the 100 mm the
@@ -282,7 +299,7 @@ impl brep_protocol::Kernel for CadKernel {
     }
 
     fn configuration(&self) -> String {
-        format!("mesh angular deflection {ANGULAR} rad")
+        format!("mesh angular deflection {ANGULAR} rad, STEP curves fitted within {STEP_FIT} mm")
     }
 
     fn make(&mut self, p: &Primitive) -> Result<Brep, Refusal> {
@@ -420,6 +437,26 @@ impl brep_protocol::Kernel for CadKernel {
         normal_sweep(s, fi, span).map_err(Refusal::failed)
     }
 
+    /// cad-kernel's deletion of faces, the faces round them run on until they close the gap.
+    fn delete_faces(&mut self, s: &Brep, faces: &[model::Vec3]) -> Result<Brep, Refusal> {
+        if is_empty(s) {
+            return Err(Refusal::invalid("an empty solid has no face to delete"));
+        }
+        let found = faces_at(s, faces)?;
+        deleted(s, &found, tol(s)).map_err(refusal)
+    }
+
+    /// The balance point from cad-kernel's moments of the solid about the origin: its first
+    /// moments over its volume.
+    fn centroid(&mut self, s: &Brep) -> Result<Option<model::Vec3>, Refusal> {
+        if is_empty(s) {
+            return Ok(None);
+        }
+        let want = std::array::from_fn(|k| k < 4);
+        let m = props::moments(s, [0.0; 3], 1.0, want);
+        Ok(Some([m[1] / m[0], m[2] / m[0], m[3] / m[0]]))
+    }
+
     /// cad-kernel's outward normal of the one face a point lies on.
     fn normal(
         &mut self,
@@ -454,13 +491,32 @@ impl brep_protocol::Kernel for CadKernel {
         if is_empty(s) {
             return Err(Refusal::invalid("an empty solid has no STEP"));
         }
-        cad_kernel::step::write(s, "solid", tol(s)).map_err(Refusal::failed)
+        cad_kernel::step::write(s, "solid", tol(s), Fit::Within(STEP_FIT)).map_err(Refusal::failed)
     }
 
-    /// What cad-kernel 0.17 has one call of the protocol's shape for. Left out with the operations
+    /// cad-kernel's STEP reader. It gives each solid of a file as a solid of its own, so a file of
+    /// several is one it does not read as one set.
+    fn read_step(&mut self, text: &str) -> Result<Brep, Refusal> {
+        let mut solids = step_read::read(text).map_err(|e| match e.why {
+            Why::Unsupported => Refusal::unsupported(e.to_string()),
+            Why::Malformed | Why::Empty | Why::Open | Why::NotManifold => {
+                Refusal::invalid(e.to_string())
+            }
+            _ => Refusal::failed(e.to_string()),
+        })?;
+        match solids.len() {
+            1 => Ok(solids.remove(0).brep),
+            _ => Err(Refusal::unsupported(
+                "cad-kernel reads each solid of a file as one of its own, not the file's solids as one set",
+            )),
+        }
+    }
+
+    /// What cad-kernel 0.26 has one call of the protocol's shape for. Left out with the operations
     /// it does not have: the chamfers, since its flat along an edge is the piece a chamfer cuts
     /// away and not the solid chamfered, and the bounding box, since its box round a solid is
-    /// never smaller than it where the protocol asks for the least one.
+    /// never smaller than it where the protocol asks for the least one, and the inertia, since its
+    /// moments are about a point given it and the centroid takes a call of its own.
     fn supports(&self) -> Vec<String> {
         [
             "box",
@@ -481,6 +537,9 @@ impl brep_protocol::Kernel for CadKernel {
             "thicken",
             "shell",
             "write_step",
+            "read_step",
+            "delete_faces",
+            "centroid",
             "volume",
             "area",
             "classify",

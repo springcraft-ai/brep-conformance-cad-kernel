@@ -32,18 +32,21 @@ with cad-kernel's own constructors, and its extrusions, revolutions and screws w
 revolution and screw of a profile, each about the origin and moved onto its frame. It answers the
 booleans, the booleans of many (cad-kernel's Boolean of any number of solids at once), volume and
 area, the validity check, classification, outward normals, rigid and affine maps, fillets,
-offsets, shells, meshes and STEP with cad-kernel's own, naming edges and faces by cad-kernel's
-reading of the point onto them. A thicken is cad-kernel's sweep of one face along its normal; a
+offsets, shells, meshes, STEP writing and reading, and the deletion of faces with cad-kernel's own,
+naming edges and faces by cad-kernel's reading of the point onto them. The centroid is cad-kernel's
+first moments of the solid over its volume, all from its one call of the solid's moments. A file of
+several solids is not read, since cad-kernel reads each as a solid of its own. A thicken is cad-kernel's sweep of one face along its normal; a
 thicken of several faces at once, and a normal at a point several faces meet at, are unsupported.
 
 cad-kernel's tolerance is relative, a part in 10⁹ of a solid's size, and the adapter passes that to
 each call that takes one. Its mesher's angular deflection is set to 0.2 rad, the value cad-kernel's
-own queries use, and `hello` says so.
+own queries use, and the curves its STEP writer fits are held within the suite's 1e-7 mm; `hello`
+says both.
 
 cad-kernel says a result is empty by a B-rep with no faces, and the adapter reads that, and nothing
 else, as the empty solid.
 
-Left out of `supports`, since cad-kernel 0.17 has no one call of the protocol's shape for it:
+Left out of `supports`, since cad-kernel 0.26 has no one call of the protocol's shape for it:
 
 - Lofts: its loft takes the walls' B-spline nets, not the sections.
 - Sweeps: it carries a profile along one line, turn or screw; the protocol's paths join several.
@@ -52,9 +55,12 @@ Left out of `supports`, since cad-kernel 0.17 has no one call of the protocol's 
 - Splits: its split takes sheets reaching past the solid, not a plane.
 - Sections: its section reads solids of revolution only.
 - The least bounding box: its box is never smaller than the solid, but not the least.
-- Slabs, blends of unequal, varying or other-shaped section, face offsets, deletes and moves, STEP
-  reading and sewing, the nearest point, curvatures, mass properties beyond volume, distance,
-  interference, Betti numbers, projections, displays and ray casts, which it does not have.
+- Inertia: its moments are about a point the caller gives, and the centroid about which the
+  protocol asks for them takes a call of its own.
+- Sewing: it sews named sheets and planar faces it is given, not the loose faces of a STEP file.
+- Slabs, blends of unequal, varying or other-shaped section, face offsets and moves, the nearest
+  point, curvatures, distance, interference, Betti numbers, projections, displays and ray casts,
+  which it does not have.
 
 Profile splines are refused until the adapter gives them as cad-kernel's B-splines.
 

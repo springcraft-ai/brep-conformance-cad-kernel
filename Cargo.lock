@@ -15,9 +15,9 @@ dependencies = [
 
 [[package]]
 name = "cad-kernel"
-version = "0.17.0"
+version = "0.26.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "25f87d04d86be306a42cc7bfb709768ae668764c9e504ed439f2740d1f1d243f"
+checksum = "28cdd82f7112e8e2fe06cb91e7e2d8d2cedc98ff8526f53b98040a5779e3d3d3"
 
 [[package]]
 name = "cad-kernel-adapter"
